@@ -41,7 +41,7 @@ def write_request(characteristic: BlessGATTCharacteristic, value: Any, **kwargs)
     #     trigger.set()
 
 
-SERVICE_NAME = "BLEIMAGESERVER"
+SERVICE_NAME = "IMAGE_SERVER"
 SERVICE_UUID = "A07498CA-AD5B-474E-940D-16F1FBE7E8CD"
 CHARACTERISTIC_UUID = "51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B"
 
@@ -63,8 +63,9 @@ async def run(loop):
         | GATTCharacteristicProperties.indicate
     )
     permissions = GATTAttributePermissions.readable | GATTAttributePermissions.writeable
+    value = "hi".encode()
     await server.add_new_characteristic(
-        SERVICE_UUID, CHARACTERISTIC_UUID, char_flags, "hi".encode(), permissions
+        SERVICE_UUID, CHARACTERISTIC_UUID, char_flags, None, permissions
     )
 
     logger.debug(server.get_characteristic(CHARACTERISTIC_UUID))
@@ -73,13 +74,17 @@ async def run(loop):
     logger.debug("Advertising")
 
     # Update the characteristic value between 0-10 every 2 seconds
-    for i in range(100):
-        logger.debug(f"Updating value: {i}")
-        write_request(server.get_characteristic(CHARACTERISTIC_UUID), str(i).encode())
+    counter = 0
+    while True:
+        logger.debug(f"Updating value: {counter}")
+        write_request(
+            server.get_characteristic(CHARACTERISTIC_UUID), str(counter).encode()
+        )
         server.update_value(SERVICE_UUID, CHARACTERISTIC_UUID)
         print(
             f"Newly written value: {read_request(server.get_characteristic(CHARACTERISTIC_UUID))}"
         )
+        counter += 1
         await asyncio.sleep(2)
 
     await server.stop()

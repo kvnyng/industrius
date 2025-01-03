@@ -2,11 +2,15 @@ import asyncio
 from bleak import BleakClient
 
 # Bluetooth address of the device
-DEVICE_ADDRESS = "B8:27:EB:19:77:0A"
+DEVICE_ADDRESS = "1860DB46-38FB-35D8-8B49-663803EF5F15"
+# DB81338E-42F6-8A8B-5812-645993A33DFC
+# E393F26A-BB37-576E-237B-7A360C0DF52
+# 10AC148F-71B6-FE34-8EA0-9AE49BB93E87
+# 29F28D79-8175-22C2-0AA4-73296B9ED0B8
 
 
 async def read_characteristics(address):
-    async with BleakClient(address, timeout=20) as client:
+    async with BleakClient(address, timeout=10) as client:
         print(f"Connected: {client.is_connected}")
 
         # Get all services and their characteristics
@@ -20,7 +24,7 @@ async def read_characteristics(address):
                         value = await client.read_gatt_char(char.uuid)
                         print(f"    Value: {value}")
                     except Exception as e:
-                        print(f"    Could not read characteristic {char.uuid}: {e}")
+                        print(f"Could not read characteristic {char.uuid}: {e}")
 
 
 async def main():
