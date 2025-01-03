@@ -36,9 +36,9 @@ def read_request(characteristic: BlessGATTCharacteristic, **kwargs) -> bytearray
 def write_request(characteristic: BlessGATTCharacteristic, value: Any, **kwargs):
     characteristic.value = value
     logger.debug(f"Char value set to {characteristic.value}")
-    if characteristic.value == b"\x0f":
-        logger.debug("NICE")
-        trigger.set()
+    # if characteristic.value == b"\x0f":
+    #     logger.debug("NICE")
+    #     trigger.set()
 
 
 SERVICE_NAME = "BLEIMAGESERVER"
@@ -64,19 +64,22 @@ async def run(loop):
     )
     permissions = GATTAttributePermissions.readable | GATTAttributePermissions.writeable
     await server.add_new_characteristic(
-        SERVICE_UUID, CHARACTERISTIC_UUID, char_flags, None, permissions
+        SERVICE_UUID, CHARACTERISTIC_UUID, char_flags, "hi", permissions
     )
 
     logger.debug(server.get_characteristic(CHARACTERISTIC_UUID))
     await server.start()
+
     logger.debug("Advertising")
-    logger.info(f"Write '0xF' to the advertised characteristic: {CHARACTERISTIC_UUID}")
 
     # Update the characteristic value between 0-10 every 2 seconds
     for i in range(100):
         logger.debug(f"Updating value: {i}")
         write_request(server.get_characteristic(CHARACTERISTIC_UUID), bytearray([i]))
         server.update_value(SERVICE_UUID, CHARACTERISTIC_UUID)
+        print(
+            f"Newly written value: {read_request(server.get_characteristic(CHARACTERISTIC_UUID))}"
+        )
         await asyncio.sleep(2)
 
     await server.stop()
