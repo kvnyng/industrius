@@ -153,11 +153,9 @@ async def run(loop):
     DATA_IMAGES_CHAR = await server.add_new_characteristic(
         SERVICE_DATA_IMAGES_UUID,
         DATA_IMAGES_UUID,
-        GATTCharacteristicProperties.read
-        # | GATTCharacteristicProperties.writeable
-        | GATTCharacteristicProperties.notify,
+        GATTCharacteristicProperties.read | GATTCharacteristicProperties.notify,
         None,
-        GATTAttributePermissions.readable | GATTAttributePermissions.writeable,
+        GATTAttributePermissions.readable,
     )
 
     # # Add a Characteristic to the service
