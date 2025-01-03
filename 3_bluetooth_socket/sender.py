@@ -20,7 +20,7 @@ print(f"Connected to {address}")
 # cap.set(cv2.CAP_PROP_FPS, 10)  # Set frame rate
 
 # Read image on disk using OpenCV
-frame = cv2.imread("image.jpg")
+frame = cv2.imread("assets/sample.jpg")
 
 try:
     while True:
