@@ -195,7 +195,7 @@ async def run(loop):
     for chunk in image_data_chunks:
         write_request(server.get_characteristic(str(DATA_IMAGES_UUID)), chunk)
         server.update_value(str(SERVICE_DATA_IMAGES_UUID), str(DATA_IMAGES_UUID))
-        await asyncio.sleep(0.000000000000001)
+        await asyncio.sleep(0.000000000000000000000000001)
     await server.stop()
 
     # Update the characteristic value between 0-10 every 2 seconds
