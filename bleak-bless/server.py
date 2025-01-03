@@ -76,7 +76,7 @@ async def run(loop):
     for i in range(100):
         logger.debug(f"Updating value: {i}")
         write_request(server.get_characteristic(CHARACTERISTIC_UUID), bytearray([i]))
-        server.update_value(SERVICE_UUID, CHARACTERISTIC_UUID, bytearray([i]))
+        server.update_value(SERVICE_UUID, CHARACTERISTIC_UUID)
         await asyncio.sleep(2)
 
     await server.stop()
