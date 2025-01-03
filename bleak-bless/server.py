@@ -64,7 +64,7 @@ async def run(loop):
     )
     permissions = GATTAttributePermissions.readable | GATTAttributePermissions.writeable
     await server.add_new_characteristic(
-        SERVICE_UUID, CHARACTERISTIC_UUID, char_flags, "hi", permissions
+        SERVICE_UUID, CHARACTERISTIC_UUID, char_flags, "hi".encode(), permissions
     )
 
     logger.debug(server.get_characteristic(CHARACTERISTIC_UUID))
