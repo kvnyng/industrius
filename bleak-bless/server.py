@@ -16,6 +16,7 @@ from bless import (  # type: ignore
     GATTAttributePermissions,
 )
 
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(name=__name__)
 
@@ -70,16 +71,14 @@ async def run(loop):
     await server.start()
     logger.debug("Advertising")
     logger.info(f"Write '0xF' to the advertised characteristic: {CHARACTERISTIC_UUID}")
-    if trigger.__module__ == "threading":
-        trigger.wait()
-    else:
-        await trigger.wait()
 
-    await asyncio.sleep(2)
-    logger.debug("Updating")
-    server.get_characteristic(CHARACTERISTIC_UUID)
-    server.update_value(SERVICE_UUID, "51FF12BB-3ED8-46E5-B4F9-D64E2FEC021B")
-    await asyncio.sleep(5)
+    # Update the characteristic value between 0-10 every 2 seconds
+    for i in range(100):
+        logger.debug(f"Updating value: {i}")
+        write_request(server.get_characteristic(CHARACTERISTIC_UUID), bytearray([i]))
+        server.update_value(SERVICE_UUID, CHARACTERISTIC_UUID, bytearray([i]))
+        await asyncio.sleep(2)
+
     await server.stop()
 
 
