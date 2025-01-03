@@ -3,8 +3,11 @@
 from bleak import BleakServer, GATTCharacteristic
 
 # Define a characteristic for the image transfer
-CHARACTERISTIC_UUID = "0000abcd-0000-1000-8000-00805f9b34fb"  # Replace with your custom UUID
+CHARACTERISTIC_UUID = (
+    "0000abcd-0000-1000-8000-00805f9b34fb"  # Replace with your custom UUID
+)
 SERVICE_UUID = "0000abcd-0000-1000-8000-00805f9b34fb"
+
 
 async def main():
     server = BleakServer()
@@ -20,11 +23,11 @@ async def main():
 
     async def on_read_request(handle):
         # Read the image in chunks
-        with open("image.jpg", "rb") as f:
+        with open("../assets/image.jpg", "rb") as f:
             data = f.read()
             # Split data into chunks of 20 bytes (or negotiate MTU for larger chunks)
             for i in range(0, len(data), 20):
-                chunk = data[i:i+20]
+                chunk = data[i : i + 20]
                 # Notify the client with the chunk
                 await characteristic.notify_value(chunk)
         return b""
@@ -36,5 +39,7 @@ async def main():
     print("Server is running...")
     await server.wait_for_connections()
 
+
 import asyncio
+
 asyncio.run(main())
