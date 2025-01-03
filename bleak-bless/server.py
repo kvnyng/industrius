@@ -73,11 +73,11 @@ async def run(loop):
     # MODEL_NUMBER_UUID = "00002A24-0000-1000-8000-00805F9B34FB"
 
     SERVICE_DEVICE_INFO_UUID = "0000180A-0000-1000-8000-00805F9B34FB"
-    SERVICE_DATA_IMAGES_UUID = "BB0098CA-AD5B-474E-0000-16F1FBE7E8CD"
+    SERVICE_DATA_IMAGES_UUID = "61518535-6b6a-4f68-bc4d-82f5d4994cd7"
 
     # Add Service
-    await server.add_new_service("0000180A-0000-1000-8000-00805F9B34FB")
-    await server.add_new_service("BB0098CA-AD5B-474E-0000-16F1FBE7E8CD")
+    await server.add_new_service(SERVICE_DEVICE_INFO_UUID)
+    await server.add_new_service(SERVICE_DATA_IMAGES_UUID)
 
     MANUFACTURER_NAME = "Industrius"
     MODEL_NUMBER = "01"
@@ -148,12 +148,12 @@ async def run(loop):
         GATTAttributePermissions.readable,
     )
 
-    DATA_IMAGES_UUID = UUID("BB0098CA-AD5B-474E-0000-16F1FBE7E8CD")
+    DATA_IMAGES_UUID = UUID("2e701fa5-06e1-4dac-a668-089e91437fc7")
 
     DATA_IMAGES_CHAR = await server.add_new_characteristic(
         SERVICE_DATA_IMAGES_UUID,
         DATA_IMAGES_UUID,
-        GATTCharacteristicProperties.read | GATTCharacteristicProperties.notify,
+        GATTCharacteristicProperties.notify | GATTCharacteristicProperties.read,
         None,
         GATTAttributePermissions.readable,
     )
