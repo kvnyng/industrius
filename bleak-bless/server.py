@@ -75,7 +75,7 @@ async def run(loop):
     # Update the characteristic value between 0-10 every 2 seconds
     for i in range(100):
         logger.debug(f"Updating value: {i}")
-        write_request(server.get_characteristic(CHARACTERISTIC_UUID), bytearray([i]))
+        write_request(server.get_characteristic(CHARACTERISTIC_UUID), str(i).encode())
         server.update_value(SERVICE_UUID, CHARACTERISTIC_UUID)
         print(
             f"Newly written value: {read_request(server.get_characteristic(CHARACTERISTIC_UUID))}"
