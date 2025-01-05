@@ -3,21 +3,23 @@ document.getElementById('connectButton').addEventListener('click', async () => {
     const dataElement = document.getElementById('data');
 
     const SERVICE_ID = "0000180a-0000-1000-8000-00805f9b34fb"
-    const SERVICE_DATA_IMAGES_UUID = "61518535-6b6a-4f68-bc4d-82f5d4994cd7"
+    const SERVICE_DATA_IMAGES_UUID = "12345678-1234-5678-1234-56789abcdef0"
+    const CHAR_DATA_IMAGES_UUID = "12345678-1234-5678-1234-56789abcdef1"
+
     const MAC_ADDRESS = "2c:cf:67:ac:68:82"
 
-    console.log("Hi");
+    console.log("MADE CHANGES");
     try {
-        console.log('Requesting Ameba Bluetooth Device...');
+        console.log('Requesting Bluetooth Device...');
         // Connect to the device with a specific MAC address
         // Identify through mac address
         const device = await navigator.bluetooth.requestDevice({
-            filters: [
-                { name: 'AMEBA_BLE_DEV' }
-            ],
+            acceptAllDevices: true,
+            // filters: [
+            //     { name: 'PECAN' }
+            // ],
             optionalServices: [SERVICE_ID, SERVICE_DATA_IMAGES_UUID],
         });
-
         statusElement.textContent = 'Status: Connecting to the device';
         // write to status element the device name, or none found if device is none through a ternary operator
         // Wait for ten seconds using system sleep
@@ -72,13 +74,13 @@ document.getElementById('connectButton').addEventListener('click', async () => {
         console.log(serviceDataImages);
 
         console.log("Getting Characteristics of the image service: ", SERVICE_DATA_IMAGES_UUID);
-        const imageCharacteristic = await serviceDataImages.getCharacteristic('2e701fa5-06e1-4dac-a668-089e91437fc7');
+        const imageCharacteristic = await serviceDataImages.getCharacteristic(CHAR_DATA_IMAGES_UUID);
 
 
         console.log("Image Characteristics: ", imageCharacteristic);
         console.log("Notifying image characteristic: ", imageCharacteristic.properties.notify);
         if (imageCharacteristic.properties.notify) {
-            imageCharacteristic.addEventListener('imageCharecteristicValeChanged', (event) => {
+            imageCharacteristic.addEventListener('imageCharecteristicValueChanged', (event) => {
                 const value = event.target.value;
                 console.log('Characteristic value changed:', value);
             });
