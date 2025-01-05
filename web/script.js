@@ -35,23 +35,29 @@ document.getElementById('connectButton').addEventListener('click', async () => {
         // Connect to the GATT server
         const server = await device.gatt.connect();
 
-        statusElement.textContent = 'Status: Connected to the device ' + SERVICE_DATA_IMAGES_UUID;
-
-        statusElement.textContent = 'Status: Connected to the device';
+        statusElement.textContent = `Status: Connected to ${device.name || 'Unknown Device'}`;
         // Wait until the server is connected 
 
         // Do not move ahead until the server is connected
         console.log('Connected to GATT Server');
-        // console.log(server);
-        // statusElement.textContent = `Status: Connected to ${device.name || 'Unknown Device'}`;
 
         // List out all services
         console.log('Getting Services...');
-        console.log("Grabbing system service: ", SERVICE_ID);
-        const service_system = await server.getPrimaryService(SERVICE_ID);
-        // console.log(service_system);
+        const all_services = await server.getPrimaryServices();
 
         const serviceListElement = document.getElementById('services');
+        all_services.forEach(service => {
+            console.log('Service: ', service.uuid);
+            console.log(service)
+            const serviceItem = document.createElement('ul');
+            serviceItem.innerHTML = `<li>Service: ${service.uuid}</li>`;
+            serviceListElement.appendChild(serviceItem);
+        });
+
+        const service_system = await server.getPrimaryService('device_information');
+        // console.log(service_system);
+
+        statusElement.textContent = 'Status: Getting Services';
 
         const characteristics = await service_system.getCharacteristics();
         characteristics.forEach(characteristic => {

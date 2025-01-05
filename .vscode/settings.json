@@ -1,0 +1,19 @@
+{
+    "files.associations": {
+        "*.ino": "cpp",
+        ".functions": "shellscript",
+        ".alias": "shellscript",
+        ".inputrc": "shellscript",
+        ".path": "shellscript",
+        ".apps": "shellscript",
+        ".look": "shellscript",
+        "locale": "cpp",
+        "__hash_table": "cpp",
+        "array": "cpp",
+        "type_traits": "cpp",
+        "limits": "cpp",
+        "ratio": "cpp",
+        "tuple": "cpp",
+        "variant": "cpp"
+    }
+}
