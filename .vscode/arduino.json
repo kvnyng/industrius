@@ -2,5 +2,5 @@
     "configuration": "EraseFlash=Disable,AutoUploadMode=Disable,StdLibInit=Enable,UploadBaudrate=2M,LoadNNModelSource=flash,CameraOption=f37,OTAMode=Disable,FCSMode=Disable",
     "board": "realtek:AmebaPro2:Ameba_AMB82-MINI",
     "port": "/dev/tty.usbserial-110",
-    "sketch": "ameba/file_read.ino"
+    "sketch": "server/server.ino"
 }

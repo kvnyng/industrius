@@ -6,15 +6,14 @@ document.getElementById('connectButton').addEventListener('click', async () => {
     const SERVICE_DATA_IMAGES_UUID = "61518535-6b6a-4f68-bc4d-82f5d4994cd7"
     const MAC_ADDRESS = "2c:cf:67:ac:68:82"
 
-    console.log("MADE CHANGES");
+    console.log("Hi");
     try {
-        console.log('Requesting Bluetooth Device...');
+        console.log('Requesting Ameba Bluetooth Device...');
         // Connect to the device with a specific MAC address
         // Identify through mac address
         const device = await navigator.bluetooth.requestDevice({
-            // acceptAllDevices: true,
             filters: [
-                { name: 'PECAN' }
+                { name: 'AMEBA_BLE_DEV' }
             ],
             optionalServices: [SERVICE_ID, SERVICE_DATA_IMAGES_UUID],
         });

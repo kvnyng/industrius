@@ -1,13 +1,39 @@
 #include "BLEDevice.h"
 #include "VideoStream.h"
 
-// BLE UUIDs for the GATT service and characteristic
+// Device Information Service UUID
+#define DEVICE_INFORMATION_SERVICE_UUID "0000180a-0000-1000-8000-00805f9b34fb"
+
+// Device Information Characteristics UUIDs
+// // Device Information Characteristics UUIDs
+#define MANUFACTURER_NAME_UUID "00002a29-0000-1000-8000-00805f9b34fb"
+#define MODEL_NUMBER_UUID "00002a24-0000-1000-8000-00805f9b34fb"
+#define SERIAL_NUMBER_UUID "00002a25-0000-1000-8000-00805f9b34fb"
+#define HARDWARE_REVISION_UUID "00002a27-0000-1000-8000-00805f9b34fb"
+#define FIRMWARE_REVISION_UUID "00002a26-0000-1000-8000-00805f9b34fb"
+#define SOFTWARE_REVISION_UUID "00002a28-0000-1000-8000-00805f9b34fb"
+#define SYSTEM_ID_UUID "00002a23-0000-1000-8000-00805f9b34fb"
+
+// // BLE UUIDs for the GATT service and characteristic
 #define IMG_SERVICE_UUID "12345678-1234-5678-1234-56789abcdef0"
 #define IMG_CHAR_UUID "12345678-1234-5678-1234-56789abcdef1"
 
 // BLE Service and Characteristic
+// // Device Information Service
+BLEService deviceInfoService(DEVICE_INFORMATION_SERVICE_UUID);
+BLEService deviceInfoChar_manufacturerName(MANUFACTURER_NAME_UUID);
+BLEService deviceInfoChar_modelNumber(MODEL_NUMBER_UUID);
+BLEService deviceInfoChar_serialNumber(SERIAL_NUMBER_UUID);
+BLEService deviceInfoChar_hardwareRevision(HARDWARE_REVISION_UUID);
+BLEService deviceInfoChar_firmwareRevision(FIRMWARE_REVISION_UUID);
+BLEService deviceInfoChar_softwareRevision(SOFTWARE_REVISION_UUID);
+BLEService deviceInfoChar_systemID(SYSTEM_ID_UUID);
+
+// // Image Service
 BLEService imgService(IMG_SERVICE_UUID);
 BLECharacteristic imgChar(IMG_CHAR_UUID);
+
+// Advertising Data
 BLEAdvertData advData;
 BLEAdvertData scanData;
 
@@ -72,10 +98,8 @@ void notifCB(BLECharacteristic *chr, uint8_t connID, uint16_t cccd)
     }
 }
 
-void setup()
+void setupImgService()
 {
-    Serial.begin(115200);
-
     // Configure BLE characteristic
     imgChar.setReadProperty(true);
     imgChar.setReadPermissions(GATT_PERM_READ);
@@ -86,6 +110,13 @@ void setup()
 
     // Add the characteristic to the service
     imgService.addCharacteristic(imgChar);
+}
+
+void setup()
+{
+    Serial.begin(115200);
+
+    setupImgService();
 
     // Advertise the BLE service
     advData.addFlags();
@@ -96,7 +127,7 @@ void setup()
     BLE.init();
 
     BLE.configAdvert()->setAdvData(advData);
-    BLE.configAdvert()->setScanRspData(scandata);
+    BLE.configAdvert()->setScanRspData(scanData);
     BLE.configServer(1);
 
     // Add the service to the BLE device
@@ -125,6 +156,6 @@ void loop()
         // Send the image in chunks via notifications
         readCB(&imgChar, 0);
 
-        delay(1000); // Add delay to reduce CPU usage
+        // delay(1000); // Add delay to reduce CPU usage
     }
 }
