@@ -3,16 +3,12 @@ document.getElementById('connectButton').addEventListener('click', async () => {
     const dataElement = document.getElementById('data');
 
     const SERVICE_ID = "0000180a-0000-1000-8000-00805f9b34fb"
-    const SERVICE_DATA_IMAGES_UUID = "12345678-0001-0000-1234-56789abcdef0"
-    const CHAR_DATA_IMAGES_UUID = "12345678-0001-0002-1234-56789abcdef0"
+    const SERVICE_DATA_IMAGES_UUID = "12345678-1234-5678-1234-56789abcdef0"
+    const CHAR_DATA_IMAGES_UUID = "12345678-1234-5678-1234-56789abcdef1"
 
-    let imageChunks = [];
+    const MAC_ADDRESS = "2c:cf:67:ac:68:82"
 
-    function handleImageChunk(event) {
-        const value = event.target.value;
-        imageChunks.push(value);
-    }
-
+    console.log("MADE CHANGES");
     try {
         console.log('Requesting Bluetooth Device...');
         // Connect to the device with a specific MAC address
@@ -25,15 +21,30 @@ document.getElementById('connectButton').addEventListener('click', async () => {
             optionalServices: [SERVICE_ID, SERVICE_DATA_IMAGES_UUID],
         });
         statusElement.textContent = 'Status: Connecting to the device';
+        // write to status element the device name, or none found if device is none through a ternary operator
+        // Wait for ten seconds using system sleep
+
+        // // Request a BLE device
+        // const device = await navigator.bluetooth.requestDevice({
+        //     acceptAllDevices: true,
+        //     optionalServices: ['battery_service'] // Replace with the service UUID you need
+        // });
+        // console.log('Device: ', device);
+
+        // statusElement.textContent = `Status: Connecting to ${device.name || 'Unknown Device'}`;
 
         // Connect to the GATT server
         const server = await device.gatt.connect();
-        console.log('Connected to GATT Server');
+
         statusElement.textContent = `Status: Connected to ${device.name || 'Unknown Device'}`;
+        // Wait until the server is connected 
 
+        // Do not move ahead until the server is connected
+        console.log('Connected to GATT Server');
 
+        // List out all services
+        console.log('Getting Services...');
         const all_services = await server.getPrimaryServices();
-        console.log('All Services: ', all_services);
 
         const serviceListElement = document.getElementById('services');
         all_services.forEach(service => {
@@ -45,11 +56,10 @@ document.getElementById('connectButton').addEventListener('click', async () => {
         });
 
         const service_system = await server.getPrimaryService('device_information');
-        console.log('Service: ', service_system.uuid);
+        // console.log(service_system);
 
         statusElement.textContent = 'Status: Getting Services';
 
-        console.log("Getting Characteristics of the service: ", service_system.uuid);
         const characteristics = await service_system.getCharacteristics();
         characteristics.forEach(characteristic => {
             console.log('Characteristic: ', characteristic.uuid);
@@ -69,24 +79,20 @@ document.getElementById('connectButton').addEventListener('click', async () => {
 
         console.log("Image Characteristics: ", imageCharacteristic);
         console.log("Notifying image characteristic: ", imageCharacteristic.properties.notify);
-        // if (imageCharacteristic.properties.notify) {
-        //     imageCharacteristic.addEventListener('imageCharecteristicValueChanged', (event) => {
-        //         const value = event.target.value;
-        //         console.log('Characteristic value changed:', value);
-        //     });
-        // } else {
-        //     console.error('Characteristic does not support notifications');
+        if (imageCharacteristic.properties.notify) {
+            imageCharacteristic.addEventListener('imageCharecteristicValueChanged', (event) => {
+                const value = event.target.value;
+                console.log('Characteristic value changed:', value);
+            });
+        } else {
 
-        // }
+            console.error('Characteristic does not support notifications');
 
-
-        // Receive the JPEG byte stream and store it
-
+        }
         imageCharacteristic.startNotifications().then(() => {
             imageCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
                 const value = event.target.value;
                 const printableValue = new TextDecoder().decode(value);
-
                 console.log('Characteristic value changed:', printableValue);
             });
         });
