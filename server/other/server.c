@@ -1,6 +1,8 @@
 #include "BLEDevice.h"
 #include "VideoStream.h"
-#include <ArduinoJson.h>
+// #include <ArduinoJson.h>
+// #include "pb_encode.h"
+// #include "pb_decode.h"
 #include "image.pb.h"
 #include <SnappyProto.h>
 
@@ -18,9 +20,9 @@
 #define SYSTEM_ID_UUID "2a23"
 
 // // BLE UUIDs for the GATT service and characteristic
-#define IMG_SERVICE_UUID "12345678-0000-0001-1234-56789abcdef0"
-#define IMG_CHAR_IMAGE_METADATA "12345678-0000-0002-1234-56789abcdef0"
-#define IMG_CHAR_STREAM "12345678-0000-0001-1234-56789abcdef0"
+#define IMG_SERVICE_UUID "12345678-0001-0000-1234-56789abcdef0"
+#define IMG_CHAR_IMAGE_METADATA "12345678-0001-0001-1234-56789abcdef0"
+#define IMG_CHAR_STREAM "12345678-0001-0002-1234-56789abcdef0"
 
 #define DEVICE_INFO_MANUFACTURER_NAME "Industrius"
 #define DEVICE_INFO_MODEL_NUMBER "1"
@@ -48,7 +50,7 @@ BLECharacteristic deviceInfoChar_systemID(SYSTEM_ID_UUID);
 
 // // Image Service
 BLEService imgService(BLEUUID(IMG_SERVICE_UUID));
-// BLECharacteristic imgCharMetadata(BLEUUID(IMG_CHAR_IMAGE_METADATA));
+BLECharacteristic imgCharMetadata(BLEUUID(IMG_CHAR_IMAGE_METADATA));
 BLECharacteristic imgChar(BLEUUID(IMG_CHAR_STREAM));
 
 // Advertising Data
@@ -56,12 +58,19 @@ BLEAdvertData advMainData;
 BLEAdvertData advImageData;
 BLEAdvertData advDeviceInfoData;
 
+struct ImageDataArg
+{
+    uint8_t *img_ptr; // Pointer to image data
+    size_t img_len;   // Length of the image
+    uint8_t *current_ptr;
+};
+
 #define DEVICE_NAME_LONG "Neckie"
 #define DEVICE_NAME_SHORT "Neck"
 
 // Camera settings
 #define CHANNEL 0
-VideoSetting config(VIDEO_VGA, CAM_FPS, VIDEO_JPEG, 1); // VGA resolution for simplicity
+VideoSetting config(VIDEO_FHD, CAM_NN_FPS, VIDEO_JPEG, 1); // VGA resolution for simplicity
 
 uint32_t img_addr = 0;
 uint32_t img_len = 0;
@@ -70,97 +79,115 @@ bool notify = false;
 unsigned long previousMillis = 0;        // Stores the last time the LED was toggled
 const unsigned long flashInterval = 500; // Interval at which to flash the LED (in milliseconds)
 
-struct ChunkData
-{
-    uint8_t *data;
-    size_t len;
-};
+// // Create JSON object
+// JsonDocument jsonPacket;
 
-void printHexArray(uint8_t *data, size_t len)
+// char jsonBuffer[256];
+
+// BLE Callbacks
+
+bool bleStreamWriter(pb_ostream_t *stream, const uint8_t *buf, size_t count)
 {
-    for (size_t i = 0; i < len; i++)
+    BLECharacteristic *bleChar = (BLECharacteristic *)stream->state;
+
+    // Write directly to the BLE characteristic
+    if (!bleChar->setData((uint8_t *)buf, count))
     {
-        Serial.print("0x");
-        if (data[i] < 0x10)
-        {
-            Serial.print("0"); // Add leading zero for single digit hex values
-        }
-        Serial.print(data[i], HEX);
-        if (i < len - 1)
-        {
-            Serial.print(" "); // Separate hex values with a space
-        }
-    }
-    Serial.println();
-}
-
-bool encode_data_callback(pb_ostream_t *stream, const pb_field_t *field, void *const *arg)
-{
-    ChunkData *chunk_data = (ChunkData *)*arg;
-
-    // Check if the data and length are valid
-    if (chunk_data->data == NULL || chunk_data->len == 0)
-    {
-        Serial.println("No data to encode.");
+        Serial.println("Failed to write data to BLE characteristic.");
         return false;
     }
 
-    // Write the data to the stream
-    if (!pb_write(stream, chunk_data->data, chunk_data->len))
-    {
-        Serial.println("Failed to write data to stream.");
-        return false;
-    }
+    updateGreenLED();
+
+    // Notify the BLE client
+    bleChar->notify(0);
+
+    // Add a small delay to allow the client to process notifications
+    delay(10);
 
     return true;
 }
 
-#define PART_BOUNDARY "123456789000000000000987654321"
-char *STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
-char *IMG_HEADER = "Content-Type: image/jpeg\r\nContent-Length: %lu\r\n\r\n";
-
-void send(BLECharacteristic *imageChr, uint8_t *buf, uint32_t len)
+// Create a BLE-based Protobuf stream
+pb_ostream_t pb_ostream_from_ble(BLECharacteristic *bleChar)
 {
-    // if the data is larger than the MTU size, split it into chunks and send
-    if (len > MTU_SIZE - 3)
-    {
-        uint8_t *ptr = buf;
-        uint32_t remaining = len;
-        while (remaining > 0)
-        {
-            uint32_t bytesToWrite = (remaining > MTU_SIZE) ? MTU_SIZE : remaining;
-            if (!imageChr->setData(ptr, bytesToWrite))
-            {
-                Serial.println("Failed to write image data to Protobuf stream.");
-                return;
-            }
-            ptr += bytesToWrite;
-            remaining -= bytesToWrite;
-        }
-    }
-    else
-    {
-        if (!imageChr->setData(buf, len))
-        {
-            Serial.println("Failed to write image data to Protobuf stream.");
-            return;
-        }
-    }
+    pb_ostream_t stream;
+    stream.callback = bleStreamWriter; // Custom write function
+    stream.state = bleChar;            // Pass BLE characteristic as state
+    stream.max_size = MTU_SIZE - 3;    // No buffer size limit for streaming
+    stream.bytes_written = 0;          // Track bytes written
+    return stream;
 }
 
-void sendChunk(BLECharacteristic *imageChr, uint8_t *buf, uint32_t len)
+bool readImageCallback(pb_ostream_t *stream, const pb_field_t *field, void *const *arg)
 {
-    uint8_t chunk_buf[64] = {0};
-    uint8_t chunk_len = snprintf((char *)chunk_buf, 64, "%lX\r\n", len);
-    send(imageChr, chunk_buf, chunk_len);
-    imageChr->notify(0);
-    send(imageChr, buf, len);
-    imageChr->notify(0);
-    send(imageChr, (uint8_t *)"\r\n", 2);
-    imageChr->notify(0);
+    // Extract the image data and length from the argument
+    ImageDataArg *imageData = (ImageDataArg *)*arg;
+
+    // Stream the image data in chunks
+    size_t chunkSize = 150; // Define a chunk size
+    // size_t remaining = imageData->img_len;
+
+    // Calculate remaining bytes to write based on moving pointer
+    size_t remaining = imageData->img_len - (imageData->current_ptr - imageData->img_ptr);
+
+    uint8_t *img_ptr = imageData->img_ptr;
+    uint8_t *current_ptr = imageData->current_ptr;
+
+    if (img_ptr == NULL)
+    {
+        printf("Image data pointer is NULL.\n");
+        return false;
+    }
+
+    size_t bytesToWrite = (remaining < chunkSize) ? remaining : chunkSize;
+
+    Serial.print("Writing this many bytes: ");
+    Serial.println(bytesToWrite);
+
+    if (!pb_write(stream, current_ptr, bytesToWrite))
+    {
+        printf("Failed to write image data to Protobuf stream.\n");
+        return false;
+    }
+    current_ptr += bytesToWrite;
+    remaining -= bytesToWrite;
+
+    if (remaining == 0)
+    {
+        printf("Image data stream complete.\n");
+    }
+
+    // while (remaining > 0)
+    // {
+    //     size_t bytesToWrite = (remaining < chunkSize) ? remaining : chunkSize;
+    //     Serial.println("Bytes to write: ");
+    //     Serial.println(bytesToWrite);
+
+    //     size_t remaining_space = stream->max_size - stream->bytes_written;
+
+    //     Serial.println("Remaining space in stream buffer: ");
+    //     Serial.println(remaining_space);
+
+    //     if (bytesToWrite > remaining_space)
+    //     {
+    //         Serial.println("Not enough space in stream buffer!");
+    //         return false;
+    //     }
+
+    //     if (!pb_write(stream, img_ptr, bytesToWrite))
+    //     {
+    //         Serial.println("Failed to write image data to Protobuf stream.");
+    //         return false;
+    //     }
+
+    //     img_ptr += bytesToWrite;
+    //     remaining -= bytesToWrite;
+    // }
+
+    return true;
 }
 
-// BLE Callbacks
 void readCamera(BLECharacteristic *imageChr, uint8_t connID)
 {
     printf("Characteristic %s read by connection %d\n", imageChr->getUUID().str(), connID);
@@ -169,21 +196,109 @@ void readCamera(BLECharacteristic *imageChr, uint8_t connID)
     Camera.getImage(CHANNEL, &img_addr, &img_len);
 
     // Split the image into chunks and write each chunk to the characteristic buffer
-    const uint16_t CHUNK_SIZE = 100; // Max size defined in BLECharacteristic
+    // const uint16_t CHUNK_SIZE = MTU_SIZE - 3; // Max size defined in BLECharacteristic
     uint8_t *img_ptr = (uint8_t *)img_addr;
-    // uint8_t *img_ptr = (uint8_t *)contiguous_buffer;
-    uint16_t bytes_remaining = img_len;
-    uint16_t chunkIndex = 0;
+    ImageDataArg imgData = {.img_ptr = img_ptr, .img_len = img_len, .current_ptr = img_ptr};
 
-    sendChunk(imageChr, (uint8_t *)STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-    sendChunk(imageChr, (uint8_t *)&img_len, sizeof(img_len));
-    sendChunk(imageChr, img_ptr, img_len);
-    sendChunk(imageChr, (uint8_t *)STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-    delay(5);
+    ImagePacket imagePacket = {};
+    imagePacket.imageSize = img_len;
+    imagePacket.timestamp = millis();
+    imagePacket.imageData.funcs.encode = readImageCallback;
+    imagePacket.imageData.arg = &imgData;
+
+    // pb_byte_t imagePacketBuffer[4096]; // Declare buffer as pb_byte_t
+    // // Create BLE Protobuf stream
+    // pb_ostream_t stream = pb_ostream_from_ble(imageChr);
+
+    // // Encode Protobuf message
+    // if (!pb_encode(&stream, ImagePacket_fields, &imagePacket))
+    // {
+    //     printf("Failed to encode ImagePacket.\n");
+    //     printf("Error: %s\n", PB_GET_ERROR(&stream));
+    //     return;
+    // }
+
+    pb_ostream_t stream = pb_ostream_from_ble(imageChr);
+
+    // pb_ostream_t stream = pb_ostream_from_buffer(imagePacketBuffer, sizeof(imagePacketBuffer));
+
+    if (!pb_encode(&stream, ImagePacket_fields, &imagePacket))
+    {
+        printf("Failed to encode Image Packet to BLE.\n");
+        printf("Error: %s\n", PB_GET_ERROR(&stream));
+        return;
+    }
+
+    // size_t stream_size = stream.bytes_written;
+
+    // for (size_t i = 0; i < stream_size; i++)
+    // {
+    //     updateGreenLED();
+    //     Serial.print(imagePacketBuffer[i], HEX);
+    //     Serial.print(" ");
+    //     // Write the current chunk to the characteristic
+    //     if (!imageChr->setData((uint8_t *)&imagePacketBuffer[i], 1))
+    //     {
+    //         printf("Failed to write chunk to characteristic.\n");
+    //         break;
+    //     }
+    //     delay(10);
+    // }
+    // Serial.println();
+
+    // uint16_t bytes_remaining = img_len;
+
+    // while (bytes_remaining > 0)
+    // {
+    //     updateGreenLED();
+    //     Serial.print("Writing chunks. Bytes Remaining:");
+    //     Serial.println(bytes_remaining);
+    //     uint16_t chunk_len = (bytes_remaining > CHUNK_SIZE) ? CHUNK_SIZE : bytes_remaining;
+
+    //     // // Further update the JSON metadata
+    //     // ["frameSize"] = chunk_len;
+    //     // JSONmetaData["frameNumber"] = JSONmetaData["imageNumber"].as<int>() + 1; // Increment image number
+
+    //     // // Serialize and print the updated JSON document
+    //     // serializeJson(jsonPacket, jsonBuffer);
+    //     // Serial.println(jsonBuffer);
+
+    //     // Write the current chunk to the characteristic
+    //     // if (!imageChr->setData(img_ptr, chunk_len))
+    //     // {
+    //     //     printf("Failed to write chunk to characteristic.\n");
+    //     //     break;
+    //     // }
+    //     // imageChr->notify(connID);
+
+    //     // if (!imgCharMetadata.setData((uint8_t *)jsonBuffer, strlen(jsonBuffer)))
+    //     // {
+    //     //     printf("Failed to write metadata to characteristic.\n");
+    //     //     break;
+    //     // }
+
+    //     // if (!metadataChr->setData((uint8_t *)jsonBuffer, strlen(jsonBuffer)))
+    //     // {
+    //     //     printf("Failed to write metadata to characteristic.\n");
+    //     //     break;
+    //     // }
+
+    //     // Notify client with the current chunk
+    //     // imgCharMetadata.notify(connID);
+    //     // imageChr->notify(connID);
+
+    //     // // Advance the pointer and decrease the remaining byte count
+    //     // img_ptr += chunk_len;
+    //     // bytes_remaining -= chunk_len;
+
+    //     delay(10); // Small delay to allow client to process notifications
+    // }
+    // Send over a clear byte to indicate the end of the image transfer
+    // All 0000
+    // uint8_t clear[4] = {0x00, 0x00, 0x00, 0x00};
+    // imageChr->setData(clear, 4);
 
     printf("Image transfer complete. Total size: %lu bytes\n", img_len);
-
-    delay(1000);
 }
 
 void notifCB(BLECharacteristic *imageChr, uint8_t connID, uint16_t cccd)
@@ -209,6 +324,13 @@ void setupImgService()
     imgChar.setNotifyProperty(true);
     imgChar.setReadCallback(readCamera);
     imgChar.setCCCDCallback(notifCB);
+
+    imgCharMetadata.setReadProperty(true);
+    imgCharMetadata.setReadPermissions(GATT_PERM_READ);
+    imgCharMetadata.setNotifyProperty(true);
+    imgCharMetadata.setBufferLen(CHAR_VALUE_MAX_LEN); // Ensure the buffer can handle the maximum characteristic value length
+    // imgCharMetadata.setReadCallback(readCamera);
+    // imgCharMetadata.setCCCDCallback(notifCB);
 
     // Add the characteristic to the service
     imgService.addCharacteristic(imgChar);
@@ -256,6 +378,27 @@ void setupDeviceInfoService()
     Serial.println("Device Information Service setup complete.");
 }
 
+// void setupImagePacket()
+// {
+//     imagePacket.imageSize = 0;
+//     imagePacket.timestamp = 0;
+//     imagePacket.frameData_size = 0;
+//     imagePacket.frameData = 0;
+//     Serial.println("Protobuf Initialized");
+// }
+
+// void setupJSONMetaData()
+// {
+//     // Initialize the JSON document
+//     JSONmetaData["imageNumber"] = 0;
+//     JSONmetaData["imageSize"] = 0;
+//     JSONmetaData["frameNumber"] = 0;
+//     JSONmetaData["frameSize"] = 0;
+//     JSONmetaData["timestamp"] = 0;
+
+//     Serial.println("JSON Meta Data Initialized");
+// }
+
 void updateBlueLED()
 {
     unsigned long currentMillis = millis();
@@ -288,7 +431,7 @@ void setup()
     digitalWrite(LED_B, LOW);
     digitalWrite(LED_G, HIGH);
 
-    // setupJSONMetaData();
+    // setupImagePacket();
 
     setupImgService();
     setupDeviceInfoService();
@@ -358,12 +501,7 @@ void loop()
         // Capture an image
         Serial.print("Grabbing image");
         Camera.getImage(CHANNEL, &img_addr, &img_len);
-        // Debugging
-        if (img_addr == 0 || img_len == 0)
-        {
-            Serial.println("Camera returned invalid data.");
-            return;
-        }
+
         // Send the image in chunks via notifications
         readCamera(&imgChar, 0);
         // delay(1000); // Add delay to reduce CPU usage

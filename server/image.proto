@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+message ImageChunk {
+  int32 index = 1;
+  bytes data = 2;
+  bool isLast = 3;
+}
+
+message ImagePacket {
+  int32 total = 1;
+  int32 imageSize = 2;
+  int64 timestamp = 3;
+  repeated ImageChunk chunks = 4;
+}

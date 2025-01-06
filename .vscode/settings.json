@@ -24,6 +24,10 @@
         "unordered_map": "cpp",
         "vector": "cpp",
         "ostream": "cpp",
-        "print": "cpp"
+        "print": "cpp",
+        "bitset": "cpp",
+        "queue": "cpp",
+        "stack": "cpp",
+        "__config": "cpp"
     }
 }
