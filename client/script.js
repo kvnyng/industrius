@@ -34,7 +34,7 @@ connectButton.addEventListener("click", async () => {
 let receivedChunks = [];
 let totalBytes = 0;
 let expectedLength = null;
-const STREAM_BOUNDARY = "--123456789000000000000987654321\r\n";
+const STREAM_BOUNDARY = "--123456789000000000000987654321";
 let currentPhase = "boundary"; // Can be "boundary", "length", "image", "end"
 
 function handleStreamData(event) {
@@ -43,15 +43,23 @@ function handleStreamData(event) {
 
     // Each packet starts with a header "%lX\r\n"
     // uint8_t chunk_len = snprintf((char *)chunk_buf, 64, "%lX\r\n", len);
-    processChunk(chunk);
-
+    // chunk = processChunk(chunk);
+    processStream(chunk);
 }
 
+// let currentChunk
+// function processChunk(chunk) {
+//     let length = 0;
+//     let data = [];
+
+//     // Take 
+//     chunk = new TextDecoder().decode(chunk)
+// }
 // Function to process received chunks
-function processChunk(chunk) {
+function processStream(chunk) {
     // Convert the chunk to a string to check for boundaries (boundary phase)
     if (currentPhase === "boundary") {
-        const chunkString = new TextDecoder().decode(chunk);
+        const chunkString = new TextDecoder().decode(chunk).replace(/\r\n/g, "");
         if (chunkString.includes(STREAM_BOUNDARY)) {
             console.log("Stream boundary detected!");
             currentPhase = "length"; // Move to the next phase
@@ -76,17 +84,21 @@ function processChunk(chunk) {
             currentPhase = "image"; // Move to the image phase
         } else {
             console.error("Incomplete length data received.");
+            console.error("Expected 4 bytes, received", chunk.length);
+            console.error("Data:", chunk);
             return;
         }
     }
 
     // Accumulate image chunks (image phase)
     if (currentPhase === "image") {
-        receivedChunks.push(chunk);
-        totalBytes += chunk.length;
+        data = new Uint8Array(chunk);
+        receivedChunks.push(data);
+        totalBytes += data.length;
+        console.log("Total Bytes:", totalBytes);
 
         // Check if the full image has been received
-        if (totalBytes >= imageLength) {
+        if (totalBytes >= imageLength / 3) {
             console.log("Image received!");
             const imageData = concatenateChunks(receivedChunks, totalBytes);
 

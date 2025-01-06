@@ -61,14 +61,14 @@ BLEAdvertData advDeviceInfoData;
 
 // Camera settings
 #define CHANNEL 0
-VideoSetting config(VIDEO_VGA, CAM_FPS, VIDEO_JPEG, 1); // VGA resolution for simplicity
+VideoSetting config(VIDEO_VGA, 10, VIDEO_JPEG, 1); // VGA resolution for simplicity
 
 uint32_t img_addr = 0;
 uint32_t img_len = 0;
 bool notify = false;
 
 unsigned long previousMillis = 0;        // Stores the last time the LED was toggled
-const unsigned long flashInterval = 500; // Interval at which to flash the LED (in milliseconds)
+const unsigned long flashInterval = 10; // Interval at which to flash the LED (in milliseconds)
 
 struct ChunkData
 {
@@ -76,44 +76,6 @@ struct ChunkData
     size_t len;
 };
 
-void printHexArray(uint8_t *data, size_t len)
-{
-    for (size_t i = 0; i < len; i++)
-    {
-        Serial.print("0x");
-        if (data[i] < 0x10)
-        {
-            Serial.print("0"); // Add leading zero for single digit hex values
-        }
-        Serial.print(data[i], HEX);
-        if (i < len - 1)
-        {
-            Serial.print(" "); // Separate hex values with a space
-        }
-    }
-    Serial.println();
-}
-
-bool encode_data_callback(pb_ostream_t *stream, const pb_field_t *field, void *const *arg)
-{
-    ChunkData *chunk_data = (ChunkData *)*arg;
-
-    // Check if the data and length are valid
-    if (chunk_data->data == NULL || chunk_data->len == 0)
-    {
-        Serial.println("No data to encode.");
-        return false;
-    }
-
-    // Write the data to the stream
-    if (!pb_write(stream, chunk_data->data, chunk_data->len))
-    {
-        Serial.println("Failed to write data to stream.");
-        return false;
-    }
-
-    return true;
-}
 
 #define PART_BOUNDARY "123456789000000000000987654321"
 char *STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
@@ -128,12 +90,15 @@ void send(BLECharacteristic *imageChr, uint8_t *buf, uint32_t len)
         uint32_t remaining = len;
         while (remaining > 0)
         {
-            uint32_t bytesToWrite = (remaining > MTU_SIZE) ? MTU_SIZE : remaining;
+            uint32_t bytesToWrite = (remaining > (MTU_SIZE -3)) ? (MTU_SIZE-3) : remaining;
             if (!imageChr->setData(ptr, bytesToWrite))
             {
                 Serial.println("Failed to write image data to Protobuf stream.");
                 return;
             }
+            imageChr->notify(0);
+            updateGreenLED();
+            // Serial.println("Writing im")
             ptr += bytesToWrite;
             remaining -= bytesToWrite;
         }
@@ -145,20 +110,22 @@ void send(BLECharacteristic *imageChr, uint8_t *buf, uint32_t len)
             Serial.println("Failed to write image data to Protobuf stream.");
             return;
         }
+        imageChr->notify(0);
     }
 }
 
 void sendChunk(BLECharacteristic *imageChr, uint8_t *buf, uint32_t len)
 {
-    uint8_t chunk_buf[64] = {0};
-    uint8_t chunk_len = snprintf((char *)chunk_buf, 64, "%lX\r\n", len);
-    send(imageChr, chunk_buf, chunk_len);
-    imageChr->notify(0);
+    // uint8_t chunk_buf[64] = {0};
+    // uint8_t chunk_len = snprintf((char *)chunk_buf, 64, "%lX\r\n", len);
+    // send(imageChr, chunk_buf, chunk_len);
+    // imageChr->notify(0);
     send(imageChr, buf, len);
-    imageChr->notify(0);
-    send(imageChr, (uint8_t *)"\r\n", 2);
-    imageChr->notify(0);
+    // imageChr->notify(0);
+    // send(imageChr, (uint8_t *)"\r\n", 2);
+    // imageChr->notify(0);
 }
+
 
 // BLE Callbacks
 void readCamera(BLECharacteristic *imageChr, uint8_t connID)
@@ -169,7 +136,7 @@ void readCamera(BLECharacteristic *imageChr, uint8_t connID)
     Camera.getImage(CHANNEL, &img_addr, &img_len);
 
     // Split the image into chunks and write each chunk to the characteristic buffer
-    const uint16_t CHUNK_SIZE = 100; // Max size defined in BLECharacteristic
+    const uint16_t CHUNK_SIZE = MTU_SIZE-3; // Max size defined in BLECharacteristic
     uint8_t *img_ptr = (uint8_t *)img_addr;
     // uint8_t *img_ptr = (uint8_t *)contiguous_buffer;
     uint16_t bytes_remaining = img_len;
@@ -179,7 +146,7 @@ void readCamera(BLECharacteristic *imageChr, uint8_t connID)
     sendChunk(imageChr, (uint8_t *)&img_len, sizeof(img_len));
     sendChunk(imageChr, img_ptr, img_len);
     sendChunk(imageChr, (uint8_t *)STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-    delay(5);
+    delay(10);
 
     printf("Image transfer complete. Total size: %lu bytes\n", img_len);
 
@@ -346,10 +313,8 @@ void loop()
     if (!BLE.connected(0))
     {
         updateBlueLED();
-    }
-    if (BLE.connected(0))
-    {
-        digitalWrite(LED_B, HIGH);
+    }else {
+      digitalWrite(LED_B, LOW);
     }
 
     // Handle BLE notifications
