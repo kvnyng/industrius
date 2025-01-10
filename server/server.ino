@@ -399,7 +399,7 @@ void loop()
             Serial.println("Camera returned invalid data.");
             return;
         }
-        // Send the image in chunks via notifications
+        // Send the image in chunks via notifications`
         readCamera(&imgChar, 0);
         // delay(1000); // Add delay to reduce CPU usage
     }
