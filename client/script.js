@@ -6,14 +6,16 @@ const ctx = canvas.getContext("2d");
 let imgServiceUuid = "12345678-0000-0001-1234-56789abcdef0";
 let imgCharUuid = "12345678-0000-0001-1234-56789abcdef0";
 
+// import { jpeg } from "jpeg-js";
+
 connectButton.addEventListener("click", async () => {
     try {
         statusText.textContent = "Status: Scanning for devices...";
         const device = await navigator.bluetooth.requestDevice({
-            // acceptAllDevices: true,
-            filters: [{
-                name: ["Neck", "Neckie"],
-            }],
+            acceptAllDevices: true,
+            // filters: [{
+            //     name: ["Neck", "Neckie", "ImgTrns"],
+            // }],
             optionalServices: [imgServiceUuid],
         });
 
@@ -39,6 +41,7 @@ let totalBytes = 0;
 let expectedLength = null;
 const STREAM_BOUNDARY = "--123456789000000000000987654321";
 let currentPhase = "boundary"; // Can be "boundary", "length", "image", "end"
+let imageLength = null;
 
 function handleStreamData(event) {
     const chunk = new Uint8Array(event.target.value.buffer);
@@ -59,23 +62,46 @@ function handleStreamData(event) {
 //     chunk = new TextDecoder().decode(chunk)
 // }
 // Function to process received chunks
+
+function reset() {
+    receivedChunks = [];
+    totalBytes = 0;
+    expectedLength = null;
+    currentPhase = "boundary";
+    imageLength = null;
+}
+
 function processStream(chunk) {
-    console.log("CHUNK LENGTH:", chunk.length, "TOTAL BYTES:", totalBytes);
-    // Convert the chunk to a string to check for boundaries (boundary phase)
-    if (currentPhase === "boundary") {
-        const chunkString = new TextDecoder().decode(chunk).replace(/\r\n/g, "");
-        if (chunk.length == 45) {
-            console.log("Boundary detected!");
-            currentPhase = "length"; // Move to the next phase
-        } else {
-            console.log("Boundary not detected yet.");
-        }
+    // console.log("CHUNK LENGTH:", chunk.length, "TOTAL BYTES:", totalBytes, "IMAGE LENGTH:", imageLength);
+
+    // Start of the frame
+    if (chunk.length == 45) {
+        console.log("----START OF FRAME----");
+        reset();
+        currentPhase = "length";
         return;
+    }
+
+    if (chunk.length == 43 && !(totalBytes + 43 == imageLength)) {
+        console.log("----END OF FRAME----");
+        // const imageData = concatenateChunks(receivedChunks, totalBytes);
+
+        // Toss out the image if the length is incorrect
+        if (totalBytes != imageLength) {
+            console.error("Expected image length", imageLength, "but received", totalBytes);
+            console.error("Data:", receivedChunks);
+            reset();
+            return;
+        }
+
+        displayImage(receivedChunks); // Process and display the image
+
+        reset();
     }
 
     // Read the image length (length phase)
     if (currentPhase === "length") {
-        console.log("Image Length Chunk:", chunk);
+        // console.log("Image Length Chunk:", chunk);
         if (chunk.length >= 4) {
             // Extract and decode the image length
             const lengthBuffer = chunk.slice(0, 4);
@@ -90,69 +116,152 @@ function processStream(chunk) {
             console.error("Incomplete length data received.");
             console.error("Expected 4 bytes, received", chunk.length);
             console.error("Data:", chunk);
-            return;
         }
+        return;
     }
 
-    // Accumulate image chunks (image phase)
     if (currentPhase === "image") {
         data = new Uint8Array(chunk);
-        receivedChunks.push(data);
+        receivedChunks.push(...data);
         totalBytes += data.length;
-        console.log("Total Bytes:", totalBytes);
-
-        // Check if the full image has been received
-        if (totalBytes >= 15000) {
-            console.log("Image received!");
-            const imageData = concatenateChunks(receivedChunks, totalBytes);
-
-            // Reset state for the next stream
-            receivedChunks = [];
-            totalBytes = 0;
-            imageLength = null;
-            currentPhase = "end"; // Expecting the closing boundary
-
-            displayImage(imageData); // Process and display the image
-        }
-    }
-
-    // Detect closing stream boundary (end phase)
-    if (currentPhase === "end") {
-        const chunkString = new TextDecoder().decode(chunk);
-        if (chunk.length == 43) {
-            console.log("Stream boundary detected at end!");
-            currentPhase = "boundary"; // Ready for the next stream
-            receivedChunks = [];
-            totalBytes = 0;
-            expectedLength = null;
-        }
+        // console.log("Total Bytes:", totalBytes);
     }
 }
 
-// Function to concatenate received chunks
-function concatenateChunks(chunks, totalBytes) {
-    const result = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.length;
-    }
-    return result;
-}
 
+// function processStream(chunk) {
+//     console.log("CHUNK LENGTH:", chunk.length, "TOTAL BYTES:", totalBytes,
+//         "IMAGE LENGTH:", imageLength
+//     );
+//     // Convert the chunk to a string to check for boundaries (boundary phase)
+//     if (currentPhase === "boundary") {
+//         const chunkString = new TextDecoder().decode(chunk).replace(/\r\n/g, "");
+//         if (chunk.length == 45) {
+//             console.log("Boundary detected!");
+//             currentPhase = "length"; // Move to the next phase
+//         } else {
+//             console.log("Boundary not detected yet.");
+//         }
+//         return;
+//     }
+
+//     // Read the image length (length phase)
+//     if (currentPhase === "length") {
+//         console.log("Image Length Chunk:", chunk);
+//         if (chunk.length >= 4) {
+//             // Extract and decode the image length
+//             const lengthBuffer = chunk.slice(0, 4);
+//             imageLength = new DataView(lengthBuffer.buffer).getUint32(0, true); // Assuming little-endian
+//             console.log("Image length:", imageLength);
+
+//             // Remove the length bytes from the current chunk
+//             chunk = chunk.slice(4);
+
+//             currentPhase = "image"; // Move to the image phase
+//         } else {
+//             console.error("Incomplete length data received.");
+//             console.error("Expected 4 bytes, received", chunk.length);
+//             console.error("Data:", chunk);
+//             return;
+//         }
+//     }
+
+//     // Accumulate image chunks (image phase)
+//     if (currentPhase === "image") {
+//         data = new Uint8Array(chunk);
+//         receivedChunks.push(data);
+//         totalBytes += data.length;
+//         console.log("Total Bytes:", totalBytes);
+
+//         // Check if the full image has been received
+//         if (totalBytes >= 15000) {
+//             console.log("Image received!");
+//             const imageData = concatenateChunks(receivedChunks, totalBytes);
+
+//             // Reset state for the next stream
+//             receivedChunks = [];
+//             totalBytes = 0;
+//             imageLength = null;
+//             currentPhase = "end"; // Expecting the closing boundary
+
+//             displayImage(imageData); // Process and display the image
+//         }
+//     }
+
+//     // Detect closing stream boundary (end phase)
+//     if (currentPhase === "end") {
+//         const chunkString = new TextDecoder().decode(chunk);
+//         if (chunk.length == 43) {
+//             console.log("Stream boundary detected at end!");
+//             currentPhase = "boundary"; // Ready for the next stream
+//             receivedChunks = [];
+//             totalBytes = 0;
+//             expectedLength = null;
+//         }
+//     }
+// }
+
+// // Function to concatenate received chunks
+// function concatenateChunks(chunks, totalBytes) {
+//     const result = new Uint8Array(totalBytes);
+//     let offset = 0;
+//     for (const chunk of chunks) {
+//         result.set(chunk, offset);
+//         offset += chunk.length;
+//     }
+//     return result;
+// }
+
+
+// function decodeJPEG(byteArray) {
+//     const rawImageData = jpeg.decode(byteArray, { useTArray: true });
+//     return rawImageData;
+// }
+function bufferToBase64(buffer) {
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
+}
 
 function displayImage(imageData) {
-    const blob = new Blob([imageData], { type: "image/jpeg" });
-    const url = URL.createObjectURL(blob);
+    console.log("Received image data:", imageData);
+    // Step 1: Create a Blob from the byte array
+    const blob = new Blob([imageData], { type: 'image/jpeg' });
 
-    const img = new Image();
-    img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        URL.revokeObjectURL(url);
-    };
-    img.src = url;
-    // Provide where to view the image
-    console.log("Image URL:", url);
+    // Step 2: Create an object URL for the Blob
+    const imageUrl = URL.createObjectURL(blob);
+
+    // Step 3: Set the `src` attribute of the image element
+    const imgElement = document.getElementById('image');
+    imgElement.src = imageUrl;
+
+    // // Optional: Clean up the object URL when no longer needed
+    // imgElement.onload = () => {
+    //     URL.revokeObjectURL(imageUrl);
+    // };
+    // const base64String = bufferToBase64(imageData);
+    // const dataURL = `data:image/jpeg;base64,${base64String}`;
+    // const img = new Image();
+
+    // img.src = dataURL;
+
+    // img.onload = () => {
+    //     canvas.width = img.width;
+    //     canvas.height = img.height;
+    //     ctx.drawImage(img, 0, 0);
+    // };
+
+    console.log("Image URL:", imageUrl);
+
+    // const img = new Image();
+    // img.onload = () => {
+    //     canvas.width = img.width;
+    //     canvas.height = img.height;
+    //     ctx.drawImage(img, 0, 0);
+    //     // Revoke image URL only after 1 second:
+    //     setTimeout(() => {
+    //         URL.revokeObjectURL(url);
+    //     }, 5000);
+    // };
+    // img.src = url;
+    // // Provide where to view the image
+    // console.log("Image URL:", url);
 }

@@ -28,6 +28,7 @@
         "bitset": "cpp",
         "queue": "cpp",
         "stack": "cpp",
-        "__config": "cpp"
+        "__config": "cpp",
+        "cstddef": "cpp"
     }
 }
