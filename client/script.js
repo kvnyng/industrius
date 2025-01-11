@@ -217,14 +217,16 @@ function processStream(chunk) {
 //     const rawImageData = jpeg.decode(byteArray, { useTArray: true });
 //     return rawImageData;
 // }
-function bufferToBase64(buffer) {
-    return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
-}
+// function bufferToBase64(buffer) {
+//     return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
+// }
 
 function displayImage(imageData) {
-    console.log("Received image data:", imageData);
+
+    const array = new Uint8Array(imageData);
+    console.log("Received image data:", array);
     // Step 1: Create a Blob from the byte array
-    const blob = new Blob([imageData], { type: 'image/jpeg' });
+    const blob = new Blob([array], { type: 'image/jpeg' });
 
     // Step 2: Create an object URL for the Blob
     const imageUrl = URL.createObjectURL(blob);
