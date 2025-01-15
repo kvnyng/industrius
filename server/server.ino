@@ -69,7 +69,7 @@ VideoSetting config(VIDEO_VGA, 30, VIDEO_JPEG, 1); // VGA resolution for simplic
 uint32_t camera_img_addr = 0;
 uint32_t camera_img_len = 0;
 
-uint32_t contiguous_buffer[30000];
+uint8_t contiguous_buffer[30000];
 
 bool notify = false;
 
@@ -207,7 +207,7 @@ void readCamera(BLECharacteristic *imageChr, uint8_t connID)
     // const uint16_t CHUNK_SIZE = MTU_SIZE - 3; // Max size defined in BLECharacteristic
 
     // point to the continuous buffer
-    uint8_t *img_ptr = (uint8_t *)contiguous_buffer;
+    // uint8_t *img_ptr = (uint8_t *)contiguous_buffer;
 
     sendChunk(imageChr, (uint8_t *)START_BOUNDARY, strlen(START_BOUNDARY));
     // Serial.print("SENDING START BOUNDARY OF LENGTH: ");
@@ -217,7 +217,7 @@ void readCamera(BLECharacteristic *imageChr, uint8_t connID)
     // // Send over which image it is
     // sendChunk(imageChr, &image_data_index, sizeof(image_data_index));
 
-    sendImage(imageChr, img_ptr, camera_img_len);
+    sendImage(imageChr, contiguous_buffer, camera_img_len);
     // Serial.print("SENDING END BOUNDARY OF LENGTH: ");
     // Serial.println(strlen(END_BOUNDARY));
     sendChunk(imageChr, (uint8_t *)END_BOUNDARY, strlen(END_BOUNDARY));
@@ -348,9 +348,10 @@ void updateBlueLED()
     }
 }
 
+unsigned long currentMillis;
 void updateGreenLED()
 {
-    unsigned long currentMillis = millis();
+    currentMillis = millis();
 
     // Check if the interval has passed
     if (currentMillis - previousMillis >= flashInterval)

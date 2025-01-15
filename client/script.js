@@ -245,7 +245,6 @@ function processStream(chunk) {
 // }
 
 let lastTime = Date.now();
-
 function displayImage(imageData) {
     // Calculate fps
     const fps = 1000 / (Date.now() - lastTime);
