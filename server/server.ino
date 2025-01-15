@@ -4,6 +4,7 @@
 #include "image.pb.h"
 #include <SnappyProto.h>
 #include <cstring> // Required for memset
+#include <cassert>
 
 // Device Information Service UUID
 #define DEVICE_INFORMATION_SERVICE_UUID "180a"
@@ -69,8 +70,6 @@ VideoSetting config(VIDEO_VGA, 30, VIDEO_JPEG, 1); // VGA resolution for simplic
 uint32_t camera_img_addr = 0;
 uint32_t camera_img_len = 0;
 
-uint8_t contiguous_buffer[30000];
-
 bool notify = false;
 
 unsigned long previousMillis = 0;       // Stores the last time the LED was toggled
@@ -90,33 +89,41 @@ uint8_t image_data[NUMBER_OF_STORED_IMAGES][MAX_NUMBER_OF_PACKETS][MAX_PACKET_SI
 
 uint8_t image_data_index = 0;
 
-uint16_t calculateBytesToWrite(uint16_t remaining)
-{
-    return (remaining > (MAX_PACKET_SIZE - 2)) ? (MAX_PACKET_SIZE - 2) : remaining;
-}
-
 uint8_t *ptr;
 uint16_t remaining;
 uint16_t bytesToWrite;
 uint16_t packet_size;
-uint8_t packet[MAX_PACKET_SIZE] = {0}; // All elements initialized to 0
+// uint8_t packet[MAX_PACKET_SIZE] = {0}; // All elements initialized to 0
 int packet_number;
 int shotgunCounter;
+uint8_t *packet;
+
+#define PACKET_HEADER_SIZE 2
+uint8_t contiguous_buffer[30000 + PACKET_HEADER_SIZE];
+
+uint16_t calculateBytesToWrite(uint16_t remaining)
+{
+    return (remaining > (MAX_PACKET_SIZE - PACKET_HEADER_SIZE)) ? (MAX_PACKET_SIZE - PACKET_HEADER_SIZE) : remaining;
+}
 
 void sendImage(BLECharacteristic *imageChr, uint8_t *buf, uint16_t len)
 {
     ptr = buf;
     remaining = len;
     bytesToWrite = calculateBytesToWrite(remaining);
-    packet_size = bytesToWrite + 2;
+    packet_size = bytesToWrite + PACKET_HEADER_SIZE;
 
     while (bytesToWrite > 0)
     {
-        packet_size = bytesToWrite + 2;
+        packet_size = bytesToWrite + PACKET_HEADER_SIZE;
+
+        // assert(ptr >= (uint8_t *)buf + 2);
+        packet = (uint8_t *)ptr - PACKET_HEADER_SIZE;
+
         packet[0] = image_data_index;
         packet[1] = packet_number;
 
-        memcpy(packet + 2, ptr, bytesToWrite);
+        // memcpy(packet + 2, ptr, bytesToWrite);
 
         if (!imageChr->setData(packet, packet_size))
         {
@@ -143,8 +150,10 @@ void sendImage(BLECharacteristic *imageChr, uint8_t *buf, uint16_t len)
         {
             delay(7);
             shotgunCounter = 0;
-        } else {
-          delay(1);
+        }
+        else
+        {
+            delay(1);
         }
     }
 
@@ -217,7 +226,7 @@ void readCamera(BLECharacteristic *imageChr, uint8_t connID)
     // // Send over which image it is
     // sendChunk(imageChr, &image_data_index, sizeof(image_data_index));
 
-    sendImage(imageChr, contiguous_buffer, camera_img_len);
+    sendImage(imageChr, contiguous_buffer + PACKET_HEADER_SIZE, camera_img_len);
     // Serial.print("SENDING END BOUNDARY OF LENGTH: ");
     // Serial.println(strlen(END_BOUNDARY));
     sendChunk(imageChr, (uint8_t *)END_BOUNDARY, strlen(END_BOUNDARY));
@@ -225,22 +234,6 @@ void readCamera(BLECharacteristic *imageChr, uint8_t connID)
     printf("Image transfer complete. Total size: %lu bytes\n", camera_img_len);
     delay(10);
 }
-
-// void saveImageData(uint8_t *buf, uint16_t len)
-// {
-//     // Save the image data to the 3D array
-//     for (uint16_t i = 0; i < len; i++)
-//     {
-//         image_data[image_data_index][i / CHUNK_SIZE][i % CHUNK_SIZE] = buf[i];
-//     }
-
-//     image_data_index++;
-
-//     if (image_data_index >= NUMBER_OF_STORED_IMAGES)
-//     {
-//         image_data_index = 0;
-//     }
-// }
 
 void notifCB(BLECharacteristic *imageChr, uint8_t connID, uint16_t cccd)
 {
@@ -349,6 +342,7 @@ void updateBlueLED()
 }
 
 unsigned long currentMillis;
+
 void updateGreenLED()
 {
     currentMillis = millis();
@@ -432,7 +426,7 @@ void grabCameraImage()
         return;
     }
 
-    memcpy(contiguous_buffer, (uint8_t *)camera_img_addr, camera_img_len);
+    memcpy(contiguous_buffer + 2, (uint8_t *)camera_img_addr, camera_img_len);
 }
 
 void loop()
