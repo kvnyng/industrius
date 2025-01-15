@@ -42,6 +42,7 @@ let expectedLength = null;
 const STREAM_BOUNDARY = "--123456789000000000000987654321";
 let currentPhase = "boundary"; // Can be "boundary", "length", "image", "end"
 let imageLength = null;
+let dataDict = {};
 
 function handleStreamData(event) {
     const chunk = new Uint8Array(event.target.value.buffer);
@@ -69,6 +70,7 @@ function reset() {
     expectedLength = null;
     currentPhase = "boundary";
     imageLength = null;
+    dataDict = {};
 }
 
 function processStream(chunk) {
@@ -84,14 +86,29 @@ function processStream(chunk) {
 
     if (chunk.length == 43 && !(totalBytes + 43 == imageLength)) {
         console.log("----END OF FRAME----");
+        const total_packets = Math.ceil(imageLength / 227);
+        const packets_received = Math.ceil(receivedChunks.length / 227);
+        const missing_packets = total_packets - packets_received;
+
         // const imageData = concatenateChunks(receivedChunks, totalBytes);
 
         // Toss out the image if the length is incorrect
         if (totalBytes != imageLength) {
-            console.error("Expected image length", imageLength, "but received", totalBytes);
-            console.error("Data:", receivedChunks);
+            console.error("Expected image length", imageLength, "but received", totalBytes, "received", packets_received, " packets", "missing", missing_packets, "packets");
             reset();
             return;
+            // round up in packets
+
+            // if (!(missing_packets < 6)) {
+            //     // console.error("Data:", receivedChunks);
+            //     reset();
+            //     return;
+            // } else {
+            //     console.log("Still displaying image as it's close enough");
+            // }
+        } else {
+            console.log("Expected image length", imageLength, "but received", totalBytes, "received", packets_received, " packets", "missing", missing_packets, "packets");
+
         }
 
         displayImage(receivedChunks); // Process and display the image
@@ -108,9 +125,6 @@ function processStream(chunk) {
             imageLength = new DataView(lengthBuffer.buffer).getUint32(0, true); // Assuming little-endian
             console.log("Image length:", imageLength);
 
-            // Remove the length bytes from the current chunk
-            chunk = chunk.slice(4);
-
             currentPhase = "image"; // Move to the image phase
         } else {
             console.error("Incomplete length data received.");
@@ -122,8 +136,17 @@ function processStream(chunk) {
 
     if (currentPhase === "image") {
         data = new Uint8Array(chunk);
-        receivedChunks.push(...data);
-        totalBytes += data.length;
+        const imageNumber = data[0];
+        const packetNumber = data[1];
+        const packet = data.slice(2);
+
+        // console.log("Image Number:", imageNumber, "Packet Number:", packetNumber, "Packet Length:", packet.length);
+
+        dataDict = { ...dataDict, [packetNumber]: packet };
+        // Add packets to dictionary of data
+
+        receivedChunks.push(...packet);
+        totalBytes += packet.length;
         // console.log("Total Bytes:", totalBytes);
     }
 }
@@ -221,7 +244,13 @@ function processStream(chunk) {
 //     return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
 // }
 
+let lastTime = Date.now();
+
 function displayImage(imageData) {
+    // Calculate fps
+    const fps = 1000 / (Date.now() - lastTime);
+    lastTime = Date.now();
+    console.log("FPS:", fps);
 
     const array = new Uint8Array(imageData);
     console.log("Received image data:", array);
@@ -232,24 +261,16 @@ function displayImage(imageData) {
     const imageUrl = URL.createObjectURL(blob);
 
     // Step 3: Set the `src` attribute of the image element
-    const imgElement = document.getElementById('image');
-    imgElement.src = imageUrl;
+    // const imgElement = document.getElementById('image');
+    // imgElement.src = imageUrl;
 
-    // // Optional: Clean up the object URL when no longer needed
-    // imgElement.onload = () => {
-    //     URL.revokeObjectURL(imageUrl);
-    // };
-    // const base64String = bufferToBase64(imageData);
-    // const dataURL = `data:image/jpeg;base64,${base64String}`;
-    // const img = new Image();
-
-    // img.src = dataURL;
-
-    // img.onload = () => {
-    //     canvas.width = img.width;
-    //     canvas.height = img.height;
-    //     ctx.drawImage(img, 0, 0);
-    // };
+    const img = new Image();
+    img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+    };
+    img.src = imageUrl;
 
     console.log("Image URL:", imageUrl);
 

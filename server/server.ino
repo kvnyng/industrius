@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include "image.pb.h"
 #include <SnappyProto.h>
+#include <cstring> // Required for memset
 
 // Device Information Service UUID
 #define DEVICE_INFORMATION_SERVICE_UUID "180a"
@@ -21,6 +22,7 @@
 #define IMG_SERVICE_UUID "12345678-0000-0001-1234-56789abcdef0"
 #define IMG_CHAR_IMAGE_METADATA "12345678-0000-0002-1234-56789abcdef0"
 #define IMG_CHAR_STREAM "12345678-0000-0001-1234-56789abcdef0"
+#define IMG_CHAR_PACKET_RECOVERY "12345678-0000-0003-1234-56789abcdef0"
 
 #define DEVICE_INFO_MANUFACTURER_NAME "Industrius"
 #define DEVICE_INFO_MODEL_NUMBER "1"
@@ -30,7 +32,7 @@
 #define DEVICE_INFO_SOFTWARE_REVISION "1"
 #define DEVICE_INFO_SYSTEM_ID "1"
 
-#define MTU_SIZE 230
+#define MTU_SIZE CHAR_VALUE_MAX_LEN
 
 uint16_t DEVICE_APPEARANCE = 900; // Camera appearance value for BLE
 
@@ -50,6 +52,7 @@ BLECharacteristic deviceInfoChar_systemID(SYSTEM_ID_UUID);
 BLEService imgService(BLEUUID(IMG_SERVICE_UUID));
 // BLECharacteristic imgCharMetadata(BLEUUID(IMG_CHAR_IMAGE_METADATA));
 BLECharacteristic imgChar(BLEUUID(IMG_CHAR_STREAM));
+BLECharacteristic packetRecoveryChar(IMG_CHAR_PACKET_RECOVERY);
 
 // Advertising Data
 BLEAdvertData advMainData;
@@ -61,12 +64,12 @@ BLEAdvertData advDeviceInfoData;
 
 // Camera settings
 #define CHANNEL 0
-VideoSetting config(VIDEO_VGA, 1, VIDEO_JPEG, 1); // VGA resolution for simplicity
+VideoSetting config(VIDEO_VGA, 30, VIDEO_JPEG, 1); // VGA resolution for simplicity
 
 uint32_t camera_img_addr = 0;
 uint32_t camera_img_len = 0;
 
-uint32_t contiguous_buffer[20000];
+uint32_t contiguous_buffer[30000];
 
 bool notify = false;
 
@@ -77,61 +80,95 @@ const unsigned long flashInterval = 10; // Interval at which to flash the LED (i
 char *START_BOUNDARY = "\r\n--" PART_BOUNDARY "--START--\r\n";
 char *END_BOUNDARY = "\r\n--" PART_BOUNDARY "--END--\r\n";
 char *STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
-// char *IMG_HEADER = "Content-Type: image/jpeg\r\nContent-Length: %lu\r\n\r\n";
 
-// void send(BLECharacteristic *imageChr, uint8_t *data, uint16_t len)
-// {
-//     if (!imageChr->setData(data, len))
-//     {
-//         Serial.println("Failed to write image data to Protobuf stream.");
-//         return;
-//     }
+// Create a 3D array to store the image data by chunk
+#define NUMBER_OF_STORED_IMAGES 10
+#define MAX_NUMBER_OF_PACKETS 400
+#define MAX_PACKET_SIZE MTU_SIZE - 3
 
-//     imageChr->notify(0);
-//     updateGreenLED();
-// }
+uint8_t image_data[NUMBER_OF_STORED_IMAGES][MAX_NUMBER_OF_PACKETS][MAX_PACKET_SIZE];
 
-// void send(BLECharacteristic *imageChr, uint8_t *buf, uint32_t len)
-// {
+uint8_t image_data_index = 0;
 
-//     Serial.print("BLE send of this length: ");
-//     Serial.println(len);
-//     // Use an offset to iterate through the buffer
-//     for (uint32_t offset = 0; offset < len; offset += (MTU_SIZE - 3))
-//     {
-//         // Calculate the number of bytes to write for this chunk
-//         uint16_t bytesToWrite = (len - offset > (MTU_SIZE - 3)) ? (MTU_SIZE - 3) : (len - offset);
-
-//         // Write the chunk to the BLE characteristic
-//         if (!imageChr->setData(buf + offset, bytesToWrite))
-//         {
-//             Serial.println("Failed to write image data to Protobuf stream.");
-//             return;
-//         }
-
-//         // Notify the BLE client and update the LED
-//         imageChr->notify(0);
-//         updateGreenLED();
-//     }
-// }
-void send(BLECharacteristic *imageChr, uint8_t *buf, uint16_t len)
+uint16_t calculateBytesToWrite(uint16_t remaining)
 {
-    // uint8_t chunk_buf[255] = {0};
+    return (remaining > (MAX_PACKET_SIZE - 2)) ? (MAX_PACKET_SIZE - 2) : remaining;
+}
 
+uint8_t *ptr;
+uint16_t remaining;
+uint16_t bytesToWrite;
+uint16_t packet_size;
+uint8_t packet[MAX_PACKET_SIZE] = {0}; // All elements initialized to 0
+int packet_number;
+int shotgunCounter;
+
+void sendImage(BLECharacteristic *imageChr, uint8_t *buf, uint16_t len)
+{
+    ptr = buf;
+    remaining = len;
+    bytesToWrite = calculateBytesToWrite(remaining);
+    packet_size = bytesToWrite + 2;
+
+    while (bytesToWrite > 0)
+    {
+        packet_size = bytesToWrite + 2;
+        packet[0] = image_data_index;
+        packet[1] = packet_number;
+
+        memcpy(packet + 2, ptr, bytesToWrite);
+
+        if (!imageChr->setData(packet, packet_size))
+        {
+            Serial.println("Failed to write image data to Protobuf stream.");
+            return;
+        }
+        imageChr->notify(0);
+
+        // Store the image data
+        memcpy(image_data[image_data_index][packet_number], packet, packet_size);
+        packet_number++;
+
+        if (packet_number >= MAX_NUMBER_OF_PACKETS)
+        {
+            packet_number = 0;
+        }
+
+        updateGreenLED();
+        ptr += bytesToWrite;
+        remaining -= bytesToWrite;
+        bytesToWrite = calculateBytesToWrite(remaining);
+
+        if (shotgunCounter++ % 40 == 0)
+        {
+            delay(7);
+            shotgunCounter = 0;
+        } else {
+          delay(1);
+        }
+    }
+
+    image_data_index++;
+    if (image_data_index >= NUMBER_OF_STORED_IMAGES)
+    {
+        image_data_index = 0;
+    }
+
+    // Serial.print("Amount of packets sent: ");
+    // Serial.println(packet_number);
+}
+
+void send(BLECharacteristic *imageChr, uint8_t *buf, uint16_t len, bool image = false)
+{
     // if the data is larger than the MTU size, split it into chunks and send
     if (len > MTU_SIZE - 3)
     {
-        uint8_t *ptr = buf;
-        uint16_t remaining = len;
-        uint16_t bytesToWrite = (remaining > (MTU_SIZE - 3)) ? (MTU_SIZE - 3) : remaining;
+        ptr = buf;
+        remaining = len;
+        bytesToWrite = (remaining > (MTU_SIZE - 3)) ? (MTU_SIZE - 3) : remaining;
 
         while (bytesToWrite > 0)
         {
-            Serial.print("Remaining Bytes to Write: ");
-            Serial.print(remaining);
-            Serial.print("Bytes That Will Be Written: ");
-            Serial.println(bytesToWrite);
-
             if (!imageChr->setData(ptr, bytesToWrite))
             {
                 Serial.println("Failed to write image data to Protobuf stream.");
@@ -139,22 +176,16 @@ void send(BLECharacteristic *imageChr, uint8_t *buf, uint16_t len)
             }
             imageChr->notify(0);
             updateGreenLED();
-            // Serial.println("Writing im")
-            // bytePtr += bytesToWrite;
-            // ptr = (uint32_t *)bytePtr;
             ptr += bytesToWrite;
             remaining -= bytesToWrite;
             bytesToWrite = (remaining > (MTU_SIZE - 3)) ? (MTU_SIZE - 3) : remaining;
         }
-
-        Serial.println("SENT LAST CHUNK WITHIN WHILE LOOP");
-        // Send the last chunk
     }
     else
     {
         if (!imageChr->setData(buf, len))
         {
-            Serial.println("Failed to write image data to Protobuf stream.");
+            Serial.println("Failed to send data over BLE");
             return;
         }
         imageChr->notify(0);
@@ -164,64 +195,52 @@ void send(BLECharacteristic *imageChr, uint8_t *buf, uint16_t len)
 
 void sendChunk(BLECharacteristic *imageChr, uint8_t *buf, uint16_t len)
 {
-    // uint8_t chunk_buf[64] = {0};
-    // uint8_t chunk_len = snprintf((char *)chunk_buf, 64, "%lX\r\n", len);
-    // send(imageChr, chunk_buf, chunk_len);
-    // imageChr->notify(0);
     send(imageChr, buf, len);
-    // imageChr->notify(0);
-    // send(imageChr, (uint8_t *)"\r\n", 2);
-    // imageChr->notify(0);
 }
-
-// void sendChunk(BLECharacteristic *imageChr, uint32_t *data, uint32_t len)
-// {
-//     const uint16_t CHUNK_SIZE = MTU_SIZE - 3; // Max size defined in BLECharacteristic
-//     const uint8_t bytesPerElement = sizeof(uint32_t);
-//     uint32_t totalBytes = len * bytesPerElement;
-//     uint8_t *casted_bytes = (uint8_t *)data;
-
-//     uint32_t offset = 0;
-
-//     while (totalBytes > 0)
-//     {
-//         uint16_t bytesToWrite = (totalBytes > CHUNK_SIZE) ? CHUNK_SIZE : totalBytes;
-
-//         send(imageChr, casted_bytes + offset, bytesToWrite);
-
-//         offset += bytesToWrite;
-//         totalBytes -= bytesToWrite;
-//     }
-// }
 
 // BLE Callbacks
 void readCamera(BLECharacteristic *imageChr, uint8_t connID)
 {
-    printf("Characteristic %s read by connection %d\n", imageChr->getUUID().str(), connID);
+    // printf("Characteristic %s read by connection %d\n", imageChr->getUUID().str(), connID);
 
     // Split the image into chunks and write each chunk to the characteristic buffer
     // const uint16_t CHUNK_SIZE = MTU_SIZE - 3; // Max size defined in BLECharacteristic
 
     // point to the continuous buffer
     uint8_t *img_ptr = (uint8_t *)contiguous_buffer;
-    // grab the length of the buffer
-    // uint8_t *img_ptr = (uint8_t *)camera_img_addr;
-    // uint8_t *img_ptr = (uint8_t *)contiguous_buffer;
-    // uint16_t bytes_remaining = camera_img_len;
-    // uint16_t chunkIndex = 0;
 
     sendChunk(imageChr, (uint8_t *)START_BOUNDARY, strlen(START_BOUNDARY));
-    Serial.print("SENDING START BOUNDARY OF LENGTH: ");
-    Serial.println(strlen(START_BOUNDARY));
+    // Serial.print("SENDING START BOUNDARY OF LENGTH: ");
+    // Serial.println(strlen(START_BOUNDARY));
     sendChunk(imageChr, (uint8_t *)&camera_img_len, sizeof(camera_img_len));
-    sendChunk(imageChr, img_ptr, camera_img_len);
-    Serial.print("SENDING END BOUNDARY OF LENGTH: ");
-    Serial.println(strlen(END_BOUNDARY));
-    delay(10);
+
+    // // Send over which image it is
+    // sendChunk(imageChr, &image_data_index, sizeof(image_data_index));
+
+    sendImage(imageChr, img_ptr, camera_img_len);
+    // Serial.print("SENDING END BOUNDARY OF LENGTH: ");
+    // Serial.println(strlen(END_BOUNDARY));
     sendChunk(imageChr, (uint8_t *)END_BOUNDARY, strlen(END_BOUNDARY));
 
     printf("Image transfer complete. Total size: %lu bytes\n", camera_img_len);
+    delay(10);
 }
+
+// void saveImageData(uint8_t *buf, uint16_t len)
+// {
+//     // Save the image data to the 3D array
+//     for (uint16_t i = 0; i < len; i++)
+//     {
+//         image_data[image_data_index][i / CHUNK_SIZE][i % CHUNK_SIZE] = buf[i];
+//     }
+
+//     image_data_index++;
+
+//     if (image_data_index >= NUMBER_OF_STORED_IMAGES)
+//     {
+//         image_data_index = 0;
+//     }
+// }
 
 void notifCB(BLECharacteristic *imageChr, uint8_t connID, uint16_t cccd)
 {
@@ -237,18 +256,41 @@ void notifCB(BLECharacteristic *imageChr, uint8_t connID, uint16_t cccd)
     }
 }
 
+void packetRecoveryWriteCB(BLECharacteristic *packetRecoveryChar, uint8_t connID)
+{
+    // Read the packet recovery data
+    uint8_t *packetRecoveryData = packetRecoveryChar->getDataBuff();
+    uint16_t packetRecoveryDataLen = packetRecoveryChar->getDataLen();
+
+    Serial.print("Packet Recovery Data received: ");
+    for (int i = 0; i < packetRecoveryDataLen; i++)
+    {
+        Serial.print(packetRecoveryData[i]);
+    }
+
+    // Add rest of code later.
+}
+
 void setupImgService()
 {
     // Configure BLE characteristic
     imgChar.setReadProperty(true);
     imgChar.setReadPermissions(GATT_PERM_READ);
-    imgChar.setBufferLen(CHAR_VALUE_MAX_LEN); // Ensure the buffer can handle the maximum characteristic value length
+    imgChar.setBufferLen(MTU_SIZE); // Ensure the buffer can handle the maximum characteristic value length
     imgChar.setNotifyProperty(true);
     // imgChar.setReadCallback(readCamera);
     imgChar.setCCCDCallback(notifCB);
 
+    packetRecoveryChar.setReadProperty(true);
+    packetRecoveryChar.setWriteProperty(true);
+    packetRecoveryChar.setReadPermissions(GATT_PERM_READ);
+    packetRecoveryChar.setWritePermissions(GATT_PERM_WRITE);
+    packetRecoveryChar.setBufferLen(MTU_SIZE);
+    packetRecoveryChar.setWriteCallback(packetRecoveryWriteCB);
+
     // Add the characteristic to the service
     imgService.addCharacteristic(imgChar);
+    imgService.addCharacteristic(packetRecoveryChar);
     // imgService.addCharacteristic(imgCharMetadata);
 }
 
@@ -388,10 +430,6 @@ void grabCameraImage()
         Serial.println("Camera returned invalid data. SELF GENERATED");
         return;
     }
-
-    // Copy the image data to a contiguous buffer
-    Serial.print("Copying image data to contiguous buffer. Length: ");
-    Serial.println(camera_img_len);
 
     memcpy(contiguous_buffer, (uint8_t *)camera_img_addr, camera_img_len);
 }
